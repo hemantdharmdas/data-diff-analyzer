@@ -6,9 +6,11 @@ from collections import Counter
 import re
 import os
 
+
 # Constants for memory management
 MAX_ROWS = 1000000  # 1 million row limit
 CHUNK_SIZE = 100000  # Process 100K rows at a time
+
 
 def convert_to_python_types(obj):
     """Convert numpy/pandas types to native Python types."""
@@ -29,6 +31,7 @@ def convert_to_python_types(obj):
     else:
         return obj
 
+
 def detect_delimiter(file_path: str, sample_size: int = 5) -> str:
     """Automatically detect the delimiter of a delimited file."""
     with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -44,6 +47,7 @@ def detect_delimiter(file_path: str, sample_size: int = 5) -> str:
             if delim in sample:
                 return delim
         return ','
+
 
 def detect_header(file_path: str, delimiter: str) -> bool:
     """
@@ -109,10 +113,26 @@ def detect_header(file_path: str, delimiter: str) -> bool:
         print(f"Header detection error: {e}")
         return True  # On error, default to header (pandas default)
 
+
 def normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize column names."""
+    """Normalize column names and handle duplicates by adding suffix."""
+    # First normalize the column names
     df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_').str.replace(r'[^\w]', '_', regex=True)
+    
+    # Handle duplicate column names
+    cols = pd.Series(df.columns)
+    
+    # Find duplicates and add suffix
+    for dup in cols[cols.duplicated()].unique():
+        dup_indices = cols[cols == dup].index.tolist()
+        # Add suffix to duplicates (keep first occurrence as is, add _1, _2, etc. to rest)
+        for i, idx in enumerate(dup_indices):
+            if i > 0:  # Skip first occurrence
+                cols.iloc[idx] = f"{dup}_{i}"
+    
+    df.columns = cols.tolist()
     return df
+
 
 def normalize_value(value, numeric_tolerance: Optional[float] = None) -> any:
     """Normalize a value for comparison."""
@@ -126,6 +146,7 @@ def normalize_value(value, numeric_tolerance: Optional[float] = None) -> any:
         return round(float(value), 5)
     
     return value
+
 
 def identify_candidate_keys(df: pd.DataFrame) -> List[Dict]:
     """Identify all candidate key columns and composite keys."""
@@ -181,6 +202,7 @@ def identify_candidate_keys(df: pd.DataFrame) -> List[Dict]:
     
     return candidates
 
+
 def select_best_key(df: pd.DataFrame) -> Tuple[List[str], Dict]:
     """Select the best key for comparison with metadata."""
     candidates = identify_candidate_keys(df)
@@ -214,6 +236,7 @@ def select_best_key(df: pd.DataFrame) -> Tuple[List[str], Dict]:
     
     return best['columns'], metadata
 
+
 def create_row_signature(row, columns, normalize: bool = True):
     """Create a unique signature for a row."""
     if normalize:
@@ -221,6 +244,7 @@ def create_row_signature(row, columns, normalize: bool = True):
     else:
         values = [str(row[col]) for col in columns]
     return '||'.join(values)
+
 
 def values_are_equal(val_a, val_b, numeric_tolerance: float = 1e-9) -> bool:
     """Compare two values with normalization and tolerance."""
@@ -237,6 +261,7 @@ def values_are_equal(val_a, val_b, numeric_tolerance: float = 1e-9) -> bool:
         return normalize_value(val_a) == normalize_value(val_b)
     
     return val_a == val_b
+
 
 def compare_dataframes(df_a: pd.DataFrame, df_b: pd.DataFrame, key_cols: List[str], 
                        numeric_tolerance: float = 1e-9) -> Dict:
@@ -489,6 +514,7 @@ def compare_dataframes(df_a: pd.DataFrame, df_b: pd.DataFrame, key_cols: List[st
         }
     }
 
+
 def count_rows(file_path: str, delimiter: str, has_header: bool) -> int:
     """Count rows in file without loading entire file."""
     try:
@@ -499,6 +525,7 @@ def count_rows(file_path: str, delimiter: str, has_header: bool) -> int:
         return row_count - 1 if has_header else row_count
     except:
         return 0
+
 
 def load_and_compare_files(file_a_path: str, file_b_path: str, 
                           numeric_tolerance: float = 1e-9,
@@ -602,6 +629,7 @@ def load_and_compare_files(file_a_path: str, file_b_path: str,
                     'details': f'File B ("{file_b_name}") has no headers and no data.\n\nPlease upload a valid CSV file.'
                 }
         
+        # Normalize column names (now handles duplicates)
         df_a = normalize_column_names(df_a)
         df_b = normalize_column_names(df_b)
         

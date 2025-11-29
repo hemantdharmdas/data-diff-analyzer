@@ -51,8 +51,8 @@ def upload_files():
     
     try:
         session_id = str(uuid.uuid4())
-        
         upload_folder = current_app.config['UPLOAD_FOLDER']
+        
         file_a_path = os.path.join(upload_folder, f"{session_id}_a_{secure_filename(file_a.filename)}")
         file_b_path = os.path.join(upload_folder, f"{session_id}_b_{secure_filename(file_b.filename)}")
         
@@ -94,7 +94,35 @@ def upload_files():
             }), 400
         
         print(f"Processing files: {file_a.filename} vs {file_b.filename}")
-        result = load_and_compare_files(file_a_path, file_b_path)
+        
+        # ====== EXTRACT ADVANCED OPTIONS ======
+        custom_keys_input = request.form.get('custom_keys', '').strip()
+        numeric_tolerance_input = request.form.get('numeric_tolerance', '0.000000001')
+        
+        # Parse custom keys (comma-separated)
+        custom_key_cols = None
+        if custom_keys_input:
+            custom_key_cols = [k.strip() for k in custom_keys_input.split(',') if k.strip()]
+            print(f"Custom keys: {custom_key_cols}")
+        else:
+            print("Custom keys: None (auto-detect)")
+        
+        # Parse numeric tolerance
+        try:
+            numeric_tolerance = float(numeric_tolerance_input)
+            print(f"Tolerance: {numeric_tolerance}")
+        except ValueError:
+            numeric_tolerance = 1e-9  # Default fallback
+            print(f"Invalid tolerance, using default: {numeric_tolerance}")
+        
+        # Call comparison with advanced options
+        result = load_and_compare_files(
+            file_a_path, 
+            file_b_path,
+            numeric_tolerance=numeric_tolerance,
+            custom_key_cols=custom_key_cols
+        )
+        # ====== END ADVANCED OPTIONS ======
         
         if 'error' in result:
             print(f"Error in comparison: {result['error']}")
@@ -177,8 +205,8 @@ def results():
     except:
         pass
     
-    return render_template('results.html', 
-                         result=result, 
+    return render_template('results.html',
+                         result=result,
                          file_a_name=file_a_name,
                          file_b_name=file_b_name)
 

@@ -50,6 +50,27 @@
                 </div>
             </div>
         </div>
+
+        <!-- Export Buttons Section -->
+        <div class="bg-white border border-gray-200 rounded-xl p-6 mb-8">
+            <h2 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-download text-indigo-600 mr-2"></i>Export Results
+            </h2>
+            <div class="grid md:grid-cols-4 gap-4">
+                <button onclick="exportToCSV('all')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg transition flex items-center justify-center">
+                    <i class="fas fa-file-archive mr-2"></i>Export All Results
+                </button>
+                <button onclick="exportToCSV('differences')" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-3 rounded-lg transition flex items-center justify-center">
+                    <i class="fas fa-exchange-alt mr-2"></i>Export Differences
+                </button>
+                <button onclick="exportToCSV('only_a')" class="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg transition flex items-center justify-center">
+                    <i class="fas fa-file-alt mr-2"></i>Export Only in A
+                </button>
+                <button onclick="exportToCSV('only_b')" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-lg transition flex items-center justify-center">
+                    <i class="fas fa-file-alt mr-2"></i>Export Only in B
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Statistics Cards -->
@@ -161,8 +182,6 @@
                             </tbody>
                         </table>
                     </div>
-                    
-                
                 </div>
                 {% endfor %}
             </div>
@@ -276,11 +295,166 @@
             </div>
             {% endif %}
         </div>
-
     </div>
 </div>
 
+<!-- Hidden div to store result data -->
+<div id="resultData" style="display:none;">{{ result | tojson }}</div>
+
 <script>
+// Load result data
+var comparisonResult = JSON.parse(document.getElementById('resultData').textContent);
+
+// Export to CSV function
+function exportToCSV(type) {
+    var result = comparisonResult;
+    var data = [];
+    var filename = '';
+    
+    if (type === 'all') {
+        var allData = [];
+        
+        // Add Only in A records
+        (result.only_in_a || []).forEach(function(row) {
+            var cleanRow = {};
+            Object.keys(row).forEach(function(key) {
+                if (!key.startsWith('__')) {
+                    cleanRow[key] = row[key];
+                }
+            });
+            cleanRow.source = 'Only in A';
+            allData.push(cleanRow);
+        });
+        
+        // Add Only in B records
+        (result.only_in_b || []).forEach(function(row) {
+            var cleanRow = {};
+            Object.keys(row).forEach(function(key) {
+                if (!key.startsWith('__')) {
+                    cleanRow[key] = row[key];
+                }
+            });
+            cleanRow.source = 'Only in B';
+            allData.push(cleanRow);
+        });
+        
+        // Add Differences
+        (result.matched_with_differences || []).forEach(function(item) {
+            var row = {};
+            Object.keys(item.key || {}).forEach(function(key) {
+                row[key] = item.key[key];
+            });
+            Object.keys(item.columns || {}).forEach(function(col) {
+                if (item.columns[col].is_different) {
+                    row[col + '_FileA'] = item.columns[col].value_a;
+                    row[col + '_FileB'] = item.columns[col].value_b;
+                }
+            });
+            row.source = 'Difference';
+            allData.push(row);
+        });
+        
+        // Add Matched records
+        (result.matched_records || []).forEach(function(row) {
+            var cleanRow = {};
+            Object.keys(row).forEach(function(key) {
+                if (!key.startsWith('__')) {
+                    cleanRow[key] = row[key];
+                }
+            });
+            cleanRow.source = 'Matched';
+            allData.push(cleanRow);
+        });
+        
+        data = allData;
+        filename = 'comparison_all_results.csv';
+    }
+    else if (type === 'only_a') {
+        data = (result.only_in_a || []).map(function(row) {
+            var cleanRow = {};
+            Object.keys(row).forEach(function(key) {
+                if (!key.startsWith('__')) {
+                    cleanRow[key] = row[key];
+                }
+            });
+            return cleanRow;
+        });
+        filename = 'only_in_file_a.csv';
+    }
+    else if (type === 'only_b') {
+        data = (result.only_in_b || []).map(function(row) {
+            var cleanRow = {};
+            Object.keys(row).forEach(function(key) {
+                if (!key.startsWith('__')) {
+                    cleanRow[key] = row[key];
+                }
+            });
+            return cleanRow;
+        });
+        filename = 'only_in_file_b.csv';
+    }
+    else if (type === 'differences') {
+        data = (result.matched_with_differences || []).map(function(item) {
+            var row = {};
+            
+            // Add key columns
+            Object.keys(item.key || {}).forEach(function(key) {
+                row[key] = item.key[key];
+            });
+            
+            // Add different columns with FileA and FileB suffix
+            Object.keys(item.columns || {}).forEach(function(col) {
+                if (item.columns[col].is_different) {
+                    row[col + '_FileA'] = item.columns[col].value_a;
+                    row[col + '_FileB'] = item.columns[col].value_b;
+                }
+            });
+            return row;
+        });
+        filename = 'differences.csv';
+    }
+    
+    if (!data || data.length === 0) {
+        alert('No data to export for this category.');
+        return;
+    }
+    
+    // Convert to CSV
+    var headers = Object.keys(data[0]);
+    var csvRows = [headers.join(',')];
+    
+    data.forEach(function(row) {
+        var values = headers.map(function(h) {
+            var value = row[h];
+            if (value === null || value === undefined) value = '';
+            value = String(value);
+            
+            // Escape CSV special characters
+            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                value = '"' + value.replace(/"/g, '""') + '"';
+            }
+            return value;
+        });
+        csvRows.push(values.join(','));
+    });
+    
+    var csvContent = csvRows.join('\n');
+    
+    // Download file
+    var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    var link = document.createElement('a');
+    var url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Tab switching function
 function switchTab(tabName) {
     document.querySelectorAll('.tab-button').forEach(function(btn) {
         btn.classList.remove('text-yellow-600', 'text-green-600', 'text-red-600', 'text-blue-600', 
@@ -307,6 +481,7 @@ function switchTab(tabName) {
     document.getElementById('panel-' + tabName).classList.remove('hidden');
 }
 
+// Auto-select first non-empty tab on page load
 document.addEventListener('DOMContentLoaded', function() {
     var diffCount = parseInt('{{ result.stats.matched_with_diff_count }}');
     var matchedCount = parseInt('{{ result.stats.matched_no_diff_count }}');
