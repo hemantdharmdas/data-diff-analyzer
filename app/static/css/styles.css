@@ -1,0 +1,46 @@
+/* Custom animations and utilities */
+@keyframes fadeIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(10px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+.tab-panel {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Table hover effects */
+tbody tr {
+    transition: all 0.2s ease;
+}
+
+/* File upload drag and drop */
+.file-upload-label input[type="file"]:focus + label {
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
+}

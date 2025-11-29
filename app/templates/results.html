@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+
+{% block title %}Comparison Results - DataCompare Pro{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="mb-8">
+        <div class="flex items-center justify-between mb-4">
+            <h1 class="text-3xl font-bold text-gray-900">
+                <i class="fas fa-chart-line text-indigo-600 mr-3"></i>Comparison Results
+            </h1>
+            <a href="/" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition">
+                <i class="fas fa-arrow-left mr-2"></i>New Comparison
+            </a>
+        </div>
+        
+        <div class="flex items-center space-x-4 text-sm text-gray-600 mb-6">
+            <span class="flex items-center">
+                <i class="fas fa-file-alt text-indigo-600 mr-2"></i>
+                <strong class="mr-1">File A:</strong> {{ file_a_name }}
+            </span>
+            <span class="text-gray-300">|</span>
+            <span class="flex items-center">
+                <i class="fas fa-file-alt text-purple-600 mr-2"></i>
+                <strong class="mr-1">File B:</strong> {{ file_b_name }}
+            </span>
+        </div>
+
+        <!-- Summary Card -->
+        <div class="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-6 mb-8">
+            <h2 class="text-lg font-bold text-gray-900 mb-4">
+                <i class="fas fa-clipboard-list text-indigo-600 mr-2"></i>Comparison Summary
+            </h2>
+            <div class="grid md:grid-cols-4 gap-4 text-sm">
+                <div class="bg-white rounded-lg p-4">
+                    <p class="text-gray-600 mb-1">Total Records (File A)</p>
+                    <p class="text-2xl font-bold text-gray-900">{{ result.stats.total_a }}</p>
+                </div>
+                <div class="bg-white rounded-lg p-4">
+                    <p class="text-gray-600 mb-1">Total Records (File B)</p>
+                    <p class="text-2xl font-bold text-gray-900">{{ result.stats.total_b }}</p>
+                </div>
+                <div class="bg-white rounded-lg p-4">
+                    <p class="text-gray-600 mb-1">Matched (Identical)</p>
+                    <p class="text-2xl font-bold text-green-600">{{ result.stats.matched_no_diff_count }}</p>
+                </div>
+                <div class="bg-white rounded-lg p-4">
+                    <p class="text-gray-600 mb-1">Records with Differences</p>
+                    <p class="text-2xl font-bold text-yellow-600">{{ result.stats.matched_with_diff_count }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="grid md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-yellow-50 rounded-xl shadow-sm border border-yellow-200 p-6">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-semibold text-yellow-800">With Differences</span>
+                <i class="fas fa-exchange-alt text-yellow-600 text-xl"></i>
+            </div>
+            <p class="text-3xl font-bold text-yellow-700">{{ result.stats.matched_with_diff_count }}</p>
+            <p class="text-xs text-yellow-600 mt-2">Same key, different values</p>
+        </div>
+        
+        <div class="bg-green-50 rounded-xl shadow-sm border border-green-200 p-6">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-semibold text-green-800">Matched Records</span>
+                <i class="fas fa-check-double text-green-600 text-xl"></i>
+            </div>
+            <p class="text-3xl font-bold text-green-700">{{ result.stats.matched_no_diff_count }}</p>
+            <p class="text-xs text-green-600 mt-2">Identical in both files</p>
+        </div>
+        
+        <div class="bg-red-50 rounded-xl shadow-sm border border-red-200 p-6">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-semibold text-red-800">Only in File A</span>
+                <i class="fas fa-minus-circle text-red-600 text-xl"></i>
+            </div>
+            <p class="text-3xl font-bold text-red-700">{{ result.stats.only_in_a_count }}</p>
+            <p class="text-xs text-red-600 mt-2">Missing from File B</p>
+        </div>
+        
+        <div class="bg-blue-50 rounded-xl shadow-sm border border-blue-200 p-6">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-semibold text-blue-800">Only in File B</span>
+                <i class="fas fa-plus-circle text-blue-600 text-xl"></i>
+            </div>
+            <p class="text-3xl font-bold text-blue-700">{{ result.stats.only_in_b_count }}</p>
+            <p class="text-xs text-blue-600 mt-2">New in File B</p>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="bg-white rounded-t-xl shadow-sm border border-gray-200 border-b-0">
+        <div class="flex border-b border-gray-200 overflow-x-auto">
+            <button onclick="switchTab('differences')" id="tab-differences" class="tab-button flex-1 px-6 py-4 text-sm font-semibold border-b-2 whitespace-nowrap">
+                <i class="fas fa-exchange-alt mr-2"></i>Differences ({{ result.stats.matched_with_diff_count }})
+            </button>
+            <button onclick="switchTab('matched')" id="tab-matched" class="tab-button flex-1 px-6 py-4 text-sm font-semibold border-b-2 whitespace-nowrap">
+                <i class="fas fa-check-double mr-2"></i>Matched ({{ result.stats.matched_no_diff_count }})
+            </button>
+            <button onclick="switchTab('only-a')" id="tab-only-a" class="tab-button flex-1 px-6 py-4 text-sm font-semibold border-b-2 whitespace-nowrap">
+                <i class="fas fa-file-alt mr-2"></i>Only in A ({{ result.stats.only_in_a_count }})
+            </button>
+            <button onclick="switchTab('only-b')" id="tab-only-b" class="tab-button flex-1 px-6 py-4 text-sm font-semibold border-b-2 whitespace-nowrap">
+                <i class="fas fa-file-alt mr-2"></i>Only in B ({{ result.stats.only_in_b_count }})
+            </button>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-b-xl shadow-sm border border-gray-200 p-6">
+        
+        <!-- Panel: Records with Differences -->
+        <div id="panel-differences" class="tab-panel hidden">
+            {% if result.matched_with_differences|length > 0 %}
+            <div class="space-y-6">
+                {% for item in result.matched_with_differences %}
+                <div class="border-2 border-yellow-300 rounded-lg overflow-hidden bg-yellow-50">
+                    <div class="bg-yellow-100 px-6 py-3 border-b-2 border-yellow-300">
+                        <span class="font-bold text-gray-900 text-lg">
+                            <i class="fas fa-key text-yellow-600 mr-2"></i>
+                            {% for col in result.key_columns %}
+                                {{ col }}: <span class="text-indigo-700">{{ item.key[col] }}</span>{% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        </span>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th class="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-300">Column</th>
+                                    {% for col in result.all_columns %}
+                                    <th class="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-300">{{ col }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="bg-indigo-50 border-b-2 border-gray-300">
+                                    <td class="px-6 py-4 text-sm font-bold text-indigo-900 border-r border-gray-300">
+                                        <i class="fas fa-file-alt mr-2"></i>FILE A
+                                    </td>
+                                    {% for col in result.all_columns %}
+                                    <td class="px-6 py-4 text-sm text-center border-r border-gray-300 {% if item.columns[col].is_different %}bg-red-100 font-bold text-red-900{% else %}text-gray-700{% endif %}">
+                                        {{ item.columns[col].value_a if item.columns[col].value_a is not none else '-' }}
+                                    </td>
+                                    {% endfor %}
+                                </tr>
+                                
+                                <tr class="bg-purple-50">
+                                    <td class="px-6 py-4 text-sm font-bold text-purple-900 border-r border-gray-300">
+                                        <i class="fas fa-file-alt mr-2"></i>FILE B
+                                    </td>
+                                    {% for col in result.all_columns %}
+                                    <td class="px-6 py-4 text-sm text-center border-r border-gray-300 {% if item.columns[col].is_different %}bg-green-100 font-bold text-green-900{% else %}text-gray-700{% endif %}">
+                                        {{ item.columns[col].value_b if item.columns[col].value_b is not none else '-' }}
+                                    </td>
+                                    {% endfor %}
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-16">
+                <i class="fas fa-check-circle text-green-500 text-6xl mb-4"></i>
+                <p class="text-xl font-semibold text-gray-900 mb-2">No Differences Found!</p>
+                <p class="text-gray-600">All matched records are identical.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Panel: Matched Records -->
+        <div id="panel-matched" class="tab-panel hidden">
+            {% if result.matched_records|length > 0 %}
+            <div class="mb-4 bg-green-50 border border-green-200 rounded-lg p-4">
+                <p class="text-sm text-green-800">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>{{ result.matched_records|length }}</strong> records are identical in both files.
+                </p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-green-50">
+                        <tr>
+                            {% for col in result.all_columns %}
+                            <th class="px-6 py-3 text-left text-xs font-semibold text-green-800 uppercase">{{ col }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for row in result.matched_records %}
+                        <tr class="hover:bg-green-50 transition">
+                            {% for col in result.all_columns %}
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ row[col] if row[col] is not none else '-' }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-16">
+                <i class="fas fa-times-circle text-red-500 text-6xl mb-4"></i>
+                <p class="text-xl font-semibold text-gray-900 mb-2">No Matched Records</p>
+                <p class="text-gray-600">No identical records found in both files.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Panel: Only in File A -->
+        <div id="panel-only-a" class="tab-panel hidden">
+            {% if result.only_in_a|length > 0 %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-red-50">
+                        <tr>
+                            {% for col in result.all_columns %}
+                            <th class="px-6 py-3 text-left text-xs font-semibold text-red-800 uppercase">{{ col }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for row in result.only_in_a %}
+                        <tr class="hover:bg-red-50 transition">
+                            {% for col in result.all_columns %}
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ row[col] if row[col] is not none else '-' }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-16">
+                <i class="fas fa-check-circle text-green-500 text-6xl mb-4"></i>
+                <p class="text-xl font-semibold text-gray-900 mb-2">No Exclusive Records</p>
+                <p class="text-gray-600">All File A records exist in File B.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Panel: Only in File B -->
+        <div id="panel-only-b" class="tab-panel hidden">
+            {% if result.only_in_b|length > 0 %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-blue-50">
+                        <tr>
+                            {% for col in result.all_columns %}
+                            <th class="px-6 py-3 text-left text-xs font-semibold text-blue-800 uppercase">{{ col }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for row in result.only_in_b %}
+                        <tr class="hover:bg-blue-50 transition">
+                            {% for col in result.all_columns %}
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ row[col] if row[col] is not none else '-' }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-16">
+                <i class="fas fa-check-circle text-green-500 text-6xl mb-4"></i>
+                <p class="text-xl font-semibold text-gray-900 mb-2">No New Records</p>
+                <p class="text-gray-600">File B has no exclusive records.</p>
+            </div>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+
+<script>
+function switchTab(tabName) {
+    document.querySelectorAll('.tab-button').forEach(function(btn) {
+        btn.classList.remove('text-yellow-600', 'text-green-600', 'text-red-600', 'text-blue-600', 
+                             'border-yellow-600', 'border-green-600', 'border-red-600', 'border-blue-600');
+        btn.classList.add('text-gray-700', 'border-transparent');
+    });
+    
+    document.querySelectorAll('.tab-panel').forEach(function(panel) {
+        panel.classList.add('hidden');
+    });
+    
+    var colors = {
+        'differences': 'yellow', 
+        'matched': 'green',
+        'only-a': 'red', 
+        'only-b': 'blue'
+    };
+    var color = colors[tabName];
+    
+    var tabButton = document.getElementById('tab-' + tabName);
+    tabButton.classList.remove('text-gray-700', 'border-transparent');
+    tabButton.classList.add('text-' + color + '-600', 'border-' + color + '-600');
+    
+    document.getElementById('panel-' + tabName).classList.remove('hidden');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var diffCount = parseInt('{{ result.stats.matched_with_diff_count }}');
+    var matchedCount = parseInt('{{ result.stats.matched_no_diff_count }}');
+    var onlyACount = parseInt('{{ result.stats.only_in_a_count }}');
+    var onlyBCount = parseInt('{{ result.stats.only_in_b_count }}');
+    
+    if (diffCount > 0) {
+        switchTab('differences');
+    } else if (matchedCount > 0) {
+        switchTab('matched');
+    } else if (onlyACount > 0) {
+        switchTab('only-a');
+    } else if (onlyBCount > 0) {
+        switchTab('only-b');
+    } else {
+        switchTab('differences');
+    }
+});
+</script>
+{% endblock %}
