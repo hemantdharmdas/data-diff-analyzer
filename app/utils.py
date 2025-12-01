@@ -6,11 +6,9 @@ from collections import Counter
 import re
 import os
 
-
 # Constants for memory management
 MAX_ROWS = 1000000  # 1 million row limit
 CHUNK_SIZE = 100000  # Process 100K rows at a time
-
 
 def convert_to_python_types(obj):
     """Convert numpy/pandas types to native Python types."""
@@ -31,7 +29,6 @@ def convert_to_python_types(obj):
     else:
         return obj
 
-
 def detect_delimiter(file_path: str, sample_size: int = 5) -> str:
     """Automatically detect the delimiter of a delimited file."""
     with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -47,7 +44,6 @@ def detect_delimiter(file_path: str, sample_size: int = 5) -> str:
             if delim in sample:
                 return delim
         return ','
-
 
 def detect_header(file_path: str, delimiter: str) -> bool:
     """
@@ -113,7 +109,6 @@ def detect_header(file_path: str, delimiter: str) -> bool:
         print(f"Header detection error: {e}")
         return True  # On error, default to header (pandas default)
 
-
 def normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
     """Normalize column names and handle duplicates by adding suffix."""
     # First normalize the column names
@@ -133,7 +128,6 @@ def normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = cols.tolist()
     return df
 
-
 def normalize_value(value, numeric_tolerance: Optional[float] = None) -> any:
     """Normalize a value for comparison."""
     if pd.isna(value):
@@ -146,7 +140,6 @@ def normalize_value(value, numeric_tolerance: Optional[float] = None) -> any:
         return round(float(value), 5)
     
     return value
-
 
 def identify_candidate_keys(df: pd.DataFrame) -> List[Dict]:
     """Identify all candidate key columns and composite keys."""
@@ -202,7 +195,6 @@ def identify_candidate_keys(df: pd.DataFrame) -> List[Dict]:
     
     return candidates
 
-
 def select_best_key(df: pd.DataFrame) -> Tuple[List[str], Dict]:
     """Select the best key for comparison with metadata."""
     candidates = identify_candidate_keys(df)
@@ -236,7 +228,6 @@ def select_best_key(df: pd.DataFrame) -> Tuple[List[str], Dict]:
     
     return best['columns'], metadata
 
-
 def create_row_signature(row, columns, normalize: bool = True):
     """Create a unique signature for a row."""
     if normalize:
@@ -244,7 +235,6 @@ def create_row_signature(row, columns, normalize: bool = True):
     else:
         values = [str(row[col]) for col in columns]
     return '||'.join(values)
-
 
 def values_are_equal(val_a, val_b, numeric_tolerance: float = 1e-9) -> bool:
     """Compare two values with normalization and tolerance."""
@@ -262,11 +252,17 @@ def values_are_equal(val_a, val_b, numeric_tolerance: float = 1e-9) -> bool:
     
     return val_a == val_b
 
-
 def compare_dataframes(df_a: pd.DataFrame, df_b: pd.DataFrame, key_cols: List[str], 
                        numeric_tolerance: float = 1e-9) -> Dict:
     """
-    Compare two dataframes - DETERMINISTIC and handles duplicates correctly.
+    Compare two dataframes with GREEDY MULTISET matching.
+    
+    Algorithm:
+    - Iterate through File A in order
+    - For each row in A, find first unmatched row in B with same key signature
+    - Match them together and consume both
+    - Remaining B rows are added to only_in_b AND if they match a key from A, 
+      also added to matched_with_differences to highlight the duplication
     """
     df_a = df_a.reset_index(drop=True)
     df_b = df_b.reset_index(drop=True)
@@ -293,9 +289,6 @@ def compare_dataframes(df_a: pd.DataFrame, df_b: pd.DataFrame, key_cols: List[st
     df_a_valid = df_a.loc[valid_idx_a].copy()
     df_b_valid = df_b.loc[valid_idx_b].copy()
     
-    df_a_valid['__row_idx__'] = df_a_valid.index
-    df_b_valid['__row_idx__'] = df_b_valid.index
-    
     # Create signatures
     df_a_valid['__full_signature__'] = df_a_valid.apply(
         lambda row: create_row_signature(row, all_cols, normalize=True), axis=1
@@ -311,34 +304,35 @@ def compare_dataframes(df_a: pd.DataFrame, df_b: pd.DataFrame, key_cols: List[st
         lambda row: create_row_signature(row, key_cols, normalize=True), axis=1
     )
     
-    # Detect duplicate keys
-    key_duplicates_a = df_a_valid[df_a_valid.duplicated(subset='__key__', keep=False)]
-    key_duplicates_b = df_b_valid[df_b_valid.duplicated(subset='__key__', keep=False)]
+    # Detect duplicate keys for reporting
+    key_count_a = df_a_valid['__key__'].value_counts().to_dict()
+    key_count_b = df_b_valid['__key__'].value_counts().to_dict()
     
     duplicate_keys_info = {
-        'file_a_duplicate_keys': int(len(key_duplicates_a)),
-        'file_b_duplicate_keys': int(len(key_duplicates_b)),
+        'file_a_duplicate_keys': int(sum(count - 1 for count in key_count_a.values() if count > 1)),
+        'file_b_duplicate_keys': int(sum(count - 1 for count in key_count_b.values() if count > 1)),
         'duplicate_keys': []
     }
     
-    if len(key_duplicates_a) > 0 or len(key_duplicates_b) > 0:
-        unique_dup_keys = set(key_duplicates_a['__key__'].unique()) | set(key_duplicates_b['__key__'].unique())
-        for dup_key in sorted(list(unique_dup_keys))[:10]:
-            count_a = int(len(df_a_valid[df_a_valid['__key__'] == dup_key]))
-            count_b = int(len(df_b_valid[df_b_valid['__key__'] == dup_key]))
-            duplicate_keys_info['duplicate_keys'].append({
-                'key': dup_key,
-                'count_a': count_a,
-                'count_b': count_b
-            })
+    # Build duplicate key list for reporting
+    all_keys_with_dups = set([k for k, v in key_count_a.items() if v > 1]) | set([k for k, v in key_count_b.items() if v > 1])
+    for dup_key in sorted(list(all_keys_with_dups))[:10]:
+        count_a = key_count_a.get(dup_key, 0)
+        count_b = key_count_b.get(dup_key, 0)
+        duplicate_keys_info['duplicate_keys'].append({
+            'key': dup_key,
+            'count_a': int(count_a),
+            'count_b': int(count_b)
+        })
     
     only_in_a = []
     only_in_b = []
     matched_records = []
     matched_with_diff = []
     
-    processed_a_indices = set()
-    processed_b_indices = set()
+    # Track which B rows have been matched and store matched rows from A for duplicate comparison
+    matched_b_indices = set()
+    matched_rows_from_a = {}  # Store the actual matched rows from A by key
     
     # If all columns are keys
     if set(key_cols) == set(all_cols):
@@ -371,78 +365,77 @@ def compare_dataframes(df_a: pd.DataFrame, df_b: pd.DataFrame, key_cols: List[st
                 extra_rows = df_b_valid[df_b_valid['__full_signature__'] == signature].sort_values(
                     by='__original_pos__'
                 ).tail(diff)
+                
+                # Get a matched row from A for comparison
+                if count_a > 0:
+                    matched_row_a = df_a_valid[df_a_valid['__full_signature__'] == signature].sort_values(
+                        by='__original_pos__'
+                    ).iloc[0]
+                
                 for _, row in extra_rows.iterrows():
-                    only_in_b.append({col: convert_to_python_types(row[col]) for col in all_cols})
+                    row_dict = {col: convert_to_python_types(row[col]) for col in all_cols}
+                    row_dict['__duplicate_warning__'] = f"Duplicate record (appears {count_b} times in File B, {count_a} times in File A)"
+                    only_in_b.append(row_dict)
+                    
+                    # ALSO add to matched_with_differences to show the duplication
+                    if count_a > 0:
+                        differences = {}
+                        for col in all_cols:
+                            val_a = matched_row_a[col]
+                            val_b = row[col]
+                            differences[col] = {
+                                'value_a': convert_to_python_types(val_a),
+                                'value_b': convert_to_python_types(val_b),
+                                'is_different': False  # Same values, just duplicate
+                            }
+                        
+                        matched_with_diff.append({
+                            'key': {col: convert_to_python_types(row[col]) for col in key_cols},
+                            'columns': differences,
+                            '__duplicate_in_b__': True,
+                            '__duplicate_note__': f"Duplicate in File B (appears {count_b}x in B, {count_a}x in A)"
+                        })
     
     else:
-        # Complex case: key != all columns
-        keys_a = set(df_a_valid['__key__'].unique())
-        keys_b = set(df_b_valid['__key__'].unique())
+        # GREEDY MATCHING: Iterate through A, consume B rows in order
+        df_a_valid = df_a_valid.sort_values(by='__original_pos__').reset_index(drop=True)
+        df_b_valid = df_b_valid.sort_values(by='__original_pos__').reset_index(drop=True)
         
-        only_a_keys = sorted(keys_a - keys_b)
-        only_b_keys = sorted(keys_b - keys_a)
-        common_keys = sorted(keys_a & keys_b)
-        
-        # Keys only in A
-        for key in only_a_keys:
-            rows = df_a_valid[df_a_valid['__key__'] == key].sort_values(by='__original_pos__')
-            for _, row in rows.iterrows():
-                only_in_a.append({col: convert_to_python_types(row[col]) for col in all_cols})
-                processed_a_indices.add(row['__row_idx__'])
-        
-        # Keys only in B
-        for key in only_b_keys:
-            rows = df_b_valid[df_b_valid['__key__'] == key].sort_values(by='__original_pos__')
-            for _, row in rows.iterrows():
-                only_in_b.append({col: convert_to_python_types(row[col]) for col in all_cols})
-                processed_b_indices.add(row['__row_idx__'])
-        
-        # Common keys - PRIORITY: match exact rows first, then different rows
-        for key in common_keys:
-            rows_a = df_a_valid[df_a_valid['__key__'] == key].copy().sort_values(
-                by='__original_pos__'
-            ).reset_index(drop=True)
+        # Iterate through each row in File A
+        for idx_a, row_a in df_a_valid.iterrows():
+            key_a = row_a['__key__']
             
-            rows_b = df_b_valid[df_b_valid['__key__'] == key].copy().sort_values(
-                by='__original_pos__'
-            ).reset_index(drop=True)
+            # Store this row for potential duplicate comparison later
+            if key_a not in matched_rows_from_a:
+                matched_rows_from_a[key_a] = []
+            matched_rows_from_a[key_a].append(row_a)
             
-            used_b_indices = set()
-            
-            # PHASE 1: Match all exact matches first
-            for idx_a, row_a in rows_a.iterrows():
-                original_idx_a = row_a['__row_idx__']
-                if original_idx_a in processed_a_indices:
+            # Find first unmatched row in B with the same key
+            matched = False
+            for idx_b, row_b in df_b_valid.iterrows():
+                # Skip if already matched
+                if idx_b in matched_b_indices:
                     continue
                 
+                key_b = row_b['__key__']
+                
+                # Keys must match
+                if key_a != key_b:
+                    continue
+                
+                # Found a match!
+                matched = True
+                matched_b_indices.add(idx_b)
+                
+                # Check if rows are identical
                 full_sig_a = row_a['__full_signature__']
+                full_sig_b = row_b['__full_signature__']
                 
-                for idx_b, row_b in rows_b.iterrows():
-                    original_idx_b = row_b['__row_idx__']
-                    if original_idx_b in used_b_indices or original_idx_b in processed_b_indices:
-                        continue
-                    
-                    full_sig_b = row_b['__full_signature__']
-                    
-                    if full_sig_a == full_sig_b:
-                        matched_records.append({col: convert_to_python_types(row_a[col]) for col in all_cols})
-                        used_b_indices.add(original_idx_b)
-                        processed_a_indices.add(original_idx_a)
-                        processed_b_indices.add(original_idx_b)
-                        break
-            
-            # PHASE 2: Match rows with differences
-            for idx_a, row_a in rows_a.iterrows():
-                original_idx_a = row_a['__row_idx__']
-                if original_idx_a in processed_a_indices:
-                    continue
-                
-                matched = False
-                for idx_b, row_b in rows_b.iterrows():
-                    original_idx_b = row_b['__row_idx__']
-                    if original_idx_b in used_b_indices or original_idx_b in processed_b_indices:
-                        continue
-                    
+                if full_sig_a == full_sig_b:
+                    # Exact match → matched_records
+                    matched_records.append({col: convert_to_python_types(row_a[col]) for col in all_cols})
+                else:
+                    # Has differences → matched_with_differences
                     differences = {}
                     has_diff = False
                     
@@ -466,22 +459,59 @@ def compare_dataframes(df_a: pd.DataFrame, df_b: pd.DataFrame, key_cols: List[st
                             'key': {col: convert_to_python_types(row_a[col]) for col in key_cols},
                             'columns': differences
                         })
-                        used_b_indices.add(original_idx_b)
-                        processed_a_indices.add(original_idx_a)
-                        processed_b_indices.add(original_idx_b)
-                        matched = True
-                        break
+                    else:
+                        matched_records.append({col: convert_to_python_types(row_a[col]) for col in all_cols})
                 
-                if not matched:
-                    only_in_a.append({col: convert_to_python_types(row_a[col]) for col in all_cols})
-                    processed_a_indices.add(original_idx_a)
+                break  # Move to next row in A
             
-            # Remaining B rows
-            for idx_b, row_b in rows_b.iterrows():
-                original_idx_b = row_b['__row_idx__']
-                if original_idx_b not in used_b_indices and original_idx_b not in processed_b_indices:
-                    only_in_b.append({col: convert_to_python_types(row_b[col]) for col in all_cols})
-                    processed_b_indices.add(original_idx_b)
+            # If no match found in B
+            if not matched:
+                only_in_a.append({col: convert_to_python_types(row_a[col]) for col in all_cols})
+        
+        # Add unmatched B rows to only_in_b AND matched_with_differences
+        for idx_b, row_b in df_b_valid.iterrows():
+            if idx_b not in matched_b_indices:
+                row_dict = {col: convert_to_python_types(row_b[col]) for col in all_cols}
+                key_b = row_b['__key__']
+                
+                # Check if this key was matched from A (i.e., it's a duplicate in B)
+                if key_b in matched_rows_from_a:
+                    # This is a duplicate record in File B
+                    count_in_b = key_count_b.get(key_b, 0)
+                    count_in_a = key_count_a.get(key_b, 0)
+                    row_dict['__duplicate_warning__'] = f"Duplicate record in File B (appears {count_in_b}x in B, {count_in_a}x in A)"
+                    
+                    # Get the first matched row from A for comparison
+                    row_a_for_comparison = matched_rows_from_a[key_b][0]
+                    
+                    # ALSO add to matched_with_differences
+                    differences = {}
+                    has_actual_diff = False
+                    
+                    for col in all_cols:
+                        val_a = row_a_for_comparison[col]
+                        val_b = row_b[col]
+                        
+                        is_different = not values_are_equal(val_a, val_b, numeric_tolerance)
+                        
+                        differences[col] = {
+                            'value_a': convert_to_python_types(val_a),
+                            'value_b': convert_to_python_types(val_b),
+                            'is_different': bool(is_different)
+                        }
+                        
+                        if is_different and col not in key_cols:
+                            has_actual_diff = True
+                    
+                    # Add to matched_with_diff regardless of whether values differ
+                    matched_with_diff.append({
+                        'key': {col: convert_to_python_types(row_b[col]) for col in key_cols},
+                        'columns': differences,
+                        '__duplicate_in_b__': True,
+                        '__duplicate_note__': f"Duplicate in File B (appears {count_in_b}x in B, {count_in_a}x in A)"
+                    })
+                
+                only_in_b.append(row_dict)
     
     # Add null key rows
     for _, row in null_key_rows_a.iterrows():
@@ -525,7 +555,6 @@ def count_rows(file_path: str, delimiter: str, has_header: bool) -> int:
         return row_count - 1 if has_header else row_count
     except:
         return 0
-
 
 def load_and_compare_files(file_a_path: str, file_b_path: str, 
                           numeric_tolerance: float = 1e-9,
