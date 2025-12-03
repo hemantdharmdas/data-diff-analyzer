@@ -1,14 +1,19 @@
 from flask import Blueprint, render_template, request, jsonify, session, current_app
 from werkzeug.utils import secure_filename
 import os
-from app.utils import load_and_compare_files
+from app.utils import load_and_compare_files, compare_dataframes, select_best_key
+from app.database_connector import DatabaseConnector
 import uuid
 import json
+import pandas as pd
+
 
 main = Blueprint('main', __name__)
 
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
+
 
 def is_text_file(file_path):
     """Check if file is actually a text file (not binary)."""
@@ -19,14 +24,23 @@ def is_text_file(file_path):
     except (UnicodeDecodeError, UnicodeError):
         return False
 
+
 def is_empty_file(file_path):
     """Check if file is empty (0 bytes)."""
     return os.path.getsize(file_path) == 0
+
 
 @main.route('/')
 def index():
     session.clear()
     return render_template('index.html')
+
+
+@main.route('/database-compare')
+def database_compare_page():
+    """Render the database comparison page."""
+    return render_template('database_compare.html')
+
 
 @main.route('/upload', methods=['POST'])
 def upload_files():
@@ -142,6 +156,7 @@ def upload_files():
         session['result_file'] = result_file_path
         session['file_a_name'] = file_a.filename
         session['file_b_name'] = file_b.filename
+        session['comparison_type'] = 'file'
         
         print(f"Comparison complete: {result.get('stats', {})}")
         
@@ -174,22 +189,266 @@ def upload_files():
             'details': f'An unexpected error occurred:\n\n{str(e)}\n\nPlease check your file format and try again.'
         }), 500
 
+
+@main.route('/compare-database', methods=['POST'])
+def compare_database():
+    """Compare two database tables directly."""
+    connector_a = None
+    connector_b = None
+    result_file_path = None
+    
+    try:
+        data = request.json
+        session_id = str(uuid.uuid4())
+        
+        # Source A configuration
+        source_a_config = {
+            'db_type': data['source_a']['db_type'],
+            'host': data['source_a']['host'],
+            'user': data['source_a']['user'],
+            'password': data['source_a']['password'],
+            'database': data['source_a']['database'],
+            'port': data['source_a'].get('port'),
+            'table': data['source_a']['table'],
+            'schema': data['source_a'].get('schema'),
+            'where_clause': data['source_a'].get('where_clause'),
+            'limit': data['source_a'].get('limit')
+        }
+        
+        # Source B configuration
+        source_b_config = {
+            'db_type': data['source_b']['db_type'],
+            'host': data['source_b']['host'],
+            'user': data['source_b']['user'],
+            'password': data['source_b']['password'],
+            'database': data['source_b']['database'],
+            'port': data['source_b'].get('port'),
+            'table': data['source_b']['table'],
+            'schema': data['source_b'].get('schema'),
+            'where_clause': data['source_b'].get('where_clause'),
+            'limit': data['source_b'].get('limit')
+        }
+        
+        # Snowflake-specific fields
+        if source_a_config['db_type'] == 'snowflake':
+            source_a_config['account'] = data['source_a']['account']
+            source_a_config['warehouse'] = data['source_a'].get('warehouse')
+            source_a_config['role'] = data['source_a'].get('role')
+        
+        if source_b_config['db_type'] == 'snowflake':
+            source_b_config['account'] = data['source_b']['account']
+            source_b_config['warehouse'] = data['source_b'].get('warehouse')
+            source_b_config['role'] = data['source_b'].get('role')
+        
+        print(f"Connecting to Source A ({source_a_config['db_type']}): {source_a_config['table']}")
+        
+        # Connect to Source A
+        connector_a = DatabaseConnector()
+        connector_a.connect(source_a_config['db_type'], source_a_config)
+        
+        print(f"Connecting to Source B ({source_b_config['db_type']}): {source_b_config['table']}")
+        
+        # Connect to Source B
+        connector_b = DatabaseConnector()
+        connector_b.connect(source_b_config['db_type'], source_b_config)
+        
+        # Get table info
+        table_info_a = connector_a.get_table_info(
+            source_a_config['table'],
+            source_a_config.get('schema')
+        )
+        
+        table_info_b = connector_b.get_table_info(
+            source_b_config['table'],
+            source_b_config.get('schema')
+        )
+        
+        print(f"Table A info: {table_info_a}")
+        print(f"Table B info: {table_info_b}")
+        
+        # Check row limits (1 million max)
+        if table_info_a['row_count'] > 1000000:
+            return jsonify({
+                'error': 'Table A too large',
+                'details': f"Table A has {table_info_a['row_count']:,} rows (max: 1,000,000). Use WHERE clause or LIMIT to filter."
+            }), 400
+        
+        if table_info_b['row_count'] > 1000000:
+            return jsonify({
+                'error': 'Table B too large',
+                'details': f"Table B has {table_info_b['row_count']:,} rows (max: 1,000,000). Use WHERE clause or LIMIT to filter."
+            }), 400
+        
+        print("Reading data from tables...")
+        
+        # Read data from tables
+        df_a = connector_a.read_table(
+            source_a_config['table'],
+            source_a_config.get('schema'),
+            source_a_config.get('limit'),
+            source_a_config.get('where_clause')
+        )
+        
+        df_b = connector_b.read_table(
+            source_b_config['table'],
+            source_b_config.get('schema'),
+            source_b_config.get('limit'),
+            source_b_config.get('where_clause')
+        )
+        
+        print(f"Loaded {len(df_a)} rows from Table A, {len(df_b)} rows from Table B")
+        
+        # Normalize column names
+        df_a.columns = df_a.columns.str.strip().str.lower()
+        df_b.columns = df_b.columns.str.strip().str.lower()
+        
+        # Check column compatibility
+        if set(df_a.columns) != set(df_b.columns):
+            return jsonify({
+                'error': 'Column mismatch',
+                'details': f"Table A columns: {list(df_a.columns)}\nTable B columns: {list(df_b.columns)}"
+            }), 400
+        
+        # Auto-select key columns or use custom
+        if 'key_columns' in data and data['key_columns']:
+            key_cols = data['key_columns']
+            key_metadata = {'type': 'custom'}
+        else:
+            key_cols, key_metadata = select_best_key(df_a)
+        
+        print(f"Using key columns: {key_cols}")
+        
+        # Compare dataframes
+        comparison_result = compare_dataframes(
+            df_a, df_b, key_cols,
+            numeric_tolerance=data.get('numeric_tolerance', 1e-9)
+        )
+        
+        # Add metadata
+        comparison_result['key_columns'] = key_cols
+        comparison_result['key_metadata'] = key_metadata
+        comparison_result['all_columns'] = list(df_a.columns)
+        comparison_result['source_a_info'] = table_info_a
+        comparison_result['source_b_info'] = table_info_b
+        
+        # Store result in file
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        result_file_path = os.path.join(upload_folder, f"{session_id}_result.json")
+        with open(result_file_path, 'w', encoding='utf-8') as f:
+            json.dump(comparison_result, f, ensure_ascii=False, indent=2)
+        
+        # Store in session
+        session['result_file'] = result_file_path
+        session['file_a_name'] = f"{source_a_config.get('schema', '')}.{source_a_config['table']} ({source_a_config['db_type']})"
+        session['file_b_name'] = f"{source_b_config.get('schema', '')}.{source_b_config['table']} ({source_b_config['db_type']})"
+        session['comparison_type'] = 'database'
+        
+        print(f"Database comparison complete: {comparison_result.get('stats', {})}")
+        
+        # Close connections
+        if connector_a:
+            connector_a.close()
+        if connector_b:
+            connector_b.close()
+        
+        return jsonify({
+            'success': True,
+            'redirect': '/results'
+        })
+    
+    except ConnectionError as e:
+        print(f"Connection error: {str(e)}")
+        if connector_a:
+            connector_a.close()
+        if connector_b:
+            connector_b.close()
+        return jsonify({'error': 'Connection failed', 'details': str(e)}), 500
+    
+    except Exception as e:
+        print(f"Database comparison error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        if connector_a:
+            connector_a.close()
+        if connector_b:
+            connector_b.close()
+        
+        # Clean up result file if created
+        if result_file_path and os.path.exists(result_file_path):
+            try:
+                os.remove(result_file_path)
+            except:
+                pass
+        
+        return jsonify({'error': 'Comparison failed', 'details': str(e)}), 500
+
+
+@main.route('/test-db-connection', methods=['POST'])
+def test_db_connection():
+    """Test database connection without loading data."""
+    connector = None
+    
+    try:
+        data = request.json
+        
+        connector = DatabaseConnector()
+        
+        config = {
+            'host': data['host'],
+            'user': data['user'],
+            'password': data['password'],
+            'database': data['database'],
+            'port': data.get('port')
+        }
+        
+        if data['db_type'] == 'snowflake':
+            config['account'] = data['account']
+            config['warehouse'] = data.get('warehouse')
+            config['schema'] = data.get('schema')
+            config['role'] = data.get('role')
+        
+        print(f"Testing connection to {data['db_type']}: {config['host']}")
+        
+        connector.connect(data['db_type'], config)
+        is_connected, message = connector.test_connection()
+        
+        if connector:
+            connector.close()
+        
+        return jsonify({
+            'success': is_connected,
+            'message': message
+        })
+    
+    except Exception as e:
+        print(f"Connection test failed: {str(e)}")
+        if connector:
+            connector.close()
+        
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+
 @main.route('/results')
 def results():
     print("Results route accessed")
     print(f"Session data: {dict(session)}")
     
     result_file = session.get('result_file')
-    file_a_name = session.get('file_a_name', 'File A')
-    file_b_name = session.get('file_b_name', 'File B')
+    file_a_name = session.get('file_a_name', 'Source A')
+    file_b_name = session.get('file_b_name', 'Source B')
+    comparison_type = session.get('comparison_type', 'file')
     
     if not result_file:
         print("No result file in session")
-        return render_template('index.html', error='No comparison data found. Please upload files.')
+        return render_template('index.html', error='No comparison data found. Please upload files or compare database tables.')
     
     if not os.path.exists(result_file):
         print(f"Result file not found: {result_file}")
-        return render_template('index.html', error='Comparison data expired. Please upload files again.')
+        return render_template('index.html', error='Comparison data expired. Please try again.')
     
     # Load result from file
     try:
@@ -208,7 +467,9 @@ def results():
     return render_template('results.html',
                          result=result,
                          file_a_name=file_a_name,
-                         file_b_name=file_b_name)
+                         file_b_name=file_b_name,
+                         comparison_type=comparison_type)
+
 
 @main.route('/api/comparison-data')
 def get_comparison_data():

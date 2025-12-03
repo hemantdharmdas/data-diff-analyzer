@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Table Comparison</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .source-section {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            background: #fafafa;
+        }
+        .source-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        button {
+            padding: 12px 24px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .test-btn {
+            background: #28a745;
+        }
+        .test-btn:hover {
+            background: #218838;
+        }
+        .back-btn {
+            background: #6c757d;
+        }
+        .back-btn:hover {
+            background: #5a6268;
+        }
+        .status {
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .button-group {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Database Table Comparison</h1>
+        <p class="subtitle">Compare tables directly from MySQL, PostgreSQL, or Snowflake</p>
+        
+        <!-- Source A -->
+        <div class="source-section">
+            <h3>📊 Source A</h3>
+            
+            <div class="form-group">
+                <label>Database Type</label>
+                <select id="dbtype_a" onchange="toggleSnowflakeFields('a')">
+                    <option value="mysql">MySQL</option>
+                    <option value="postgresql">PostgreSQL</option>
+                    <option value="snowflake">Snowflake</option>
+                </select>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Host</label>
+                    <input type="text" id="host_a" placeholder="localhost">
+                </div>
+                <div class="form-group">
+                    <label>Port (optional)</label>
+                    <input type="text" id="port_a" placeholder="Auto-detect if empty">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="user_a" placeholder="root">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password_a">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Database</label>
+                    <input type="text" id="database_a" placeholder="my_database">
+                </div>
+                <div class="form-group">
+                    <label>Schema (optional)</label>
+                    <input type="text" id="schema_a" placeholder="public">
+                </div>
+            </div>
+            
+            <!-- Snowflake-specific fields -->
+            <div id="snowflake_fields_a" style="display: none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Account</label>
+                        <input type="text" id="account_a" placeholder="xy12345.ap-southeast-1">
+                    </div>
+                    <div class="form-group">
+                        <label>Warehouse</label>
+                        <input type="text" id="warehouse_a" placeholder="COMPUTE_WH">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Role (optional)</label>
+                    <input type="text" id="role_a" placeholder="ACCOUNTADMIN">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Table Name</label>
+                    <input type="text" id="table_a" placeholder="customers">
+                </div>
+                <div class="form-group">
+                    <label>Row Limit (optional)</label>
+                    <input type="number" id="limit_a" placeholder="Leave empty for all rows">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>WHERE Clause (optional)</label>
+                <input type="text" id="where_a" placeholder="created_date > '2024-01-01'">
+            </div>
+            
+            <button class="test-btn" onclick="testConnection('a')">Test Connection A</button>
+            <div id="status_a"></div>
+        </div>
+        
+        <!-- Source B -->
+        <div class="source-section">
+            <h3>📊 Source B</h3>
+            
+            <div class="form-group">
+                <label>Database Type</label>
+                <select id="dbtype_b" onchange="toggleSnowflakeFields('b')">
+                    <option value="mysql">MySQL</option>
+                    <option value="postgresql">PostgreSQL</option>
+                    <option value="snowflake">Snowflake</option>
+                </select>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Host</label>
+                    <input type="text" id="host_b" placeholder="localhost">
+                </div>
+                <div class="form-group">
+                    <label>Port (optional)</label>
+                    <input type="text" id="port_b" placeholder="Auto-detect if empty">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="user_b" placeholder="root">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password_b">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Database</label>
+                    <input type="text" id="database_b" placeholder="my_database">
+                </div>
+                <div class="form-group">
+                    <label>Schema (optional)</label>
+                    <input type="text" id="schema_b" placeholder="public">
+                </div>
+            </div>
+            
+            <!-- Snowflake-specific fields -->
+            <div id="snowflake_fields_b" style="display: none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Account</label>
+                        <input type="text" id="account_b" placeholder="xy12345.ap-southeast-1">
+                    </div>
+                    <div class="form-group">
+                        <label>Warehouse</label>
+                        <input type="text" id="warehouse_b" placeholder="COMPUTE_WH">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Role (optional)</label>
+                    <input type="text" id="role_b" placeholder="ACCOUNTADMIN">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Table Name</label>
+                    <input type="text" id="table_b" placeholder="customers">
+                </div>
+                <div class="form-group">
+                    <label>Row Limit (optional)</label>
+                    <input type="number" id="limit_b" placeholder="Leave empty for all rows">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>WHERE Clause (optional)</label>
+                <input type="text" id="where_b" placeholder="created_date > '2024-01-01'">
+            </div>
+            
+            <button class="test-btn" onclick="testConnection('b')">Test Connection B</button>
+            <div id="status_b"></div>
+        </div>
+        
+        <div class="button-group">
+            <button onclick="compareTables()">🔍 Compare Tables</button>
+            <button class="back-btn" onclick="window.location.href='/'">⬅️ Back to File Upload</button>
+        </div>
+        
+        <div id="result"></div>
+    </div>
+    
+    <script>
+        function toggleSnowflakeFields(source) {
+            const dbType = document.getElementById(`dbtype_${source}`).value;
+            const snowflakeFields = document.getElementById(`snowflake_fields_${source}`);
+            snowflakeFields.style.display = dbType === 'snowflake' ? 'block' : 'none';
+        }
+        
+        async function testConnection(source) {
+            const statusDiv = document.getElementById(`status_${source}`);
+            statusDiv.innerHTML = '<div class="status info">⏳ Testing connection...</div>';
+            
+            const config = {
+                db_type: document.getElementById(`dbtype_${source}`).value,
+                host: document.getElementById(`host_${source}`).value,
+                user: document.getElementById(`user_${source}`).value,
+                password: document.getElementById(`password_${source}`).value,
+                database: document.getElementById(`database_${source}`).value,
+                port: parseInt(document.getElementById(`port_${source}`).value) || null
+            };
+            
+            if (config.db_type === 'snowflake') {
+                config.account = document.getElementById(`account_${source}`).value;
+                config.warehouse = document.getElementById(`warehouse_${source}`).value;
+                config.schema = document.getElementById(`schema_${source}`).value;
+                config.role = document.getElementById(`role_${source}`).value;
+            }
+            
+            try {
+                const response = await fetch('/test-db-connection', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(config)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    statusDiv.innerHTML = `<div class="status success">✅ ${result.message}</div>`;
+                } else {
+                    statusDiv.innerHTML = `<div class="status error">❌ ${result.message}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+            }
+        }
+        
+        async function compareTables() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="status info">⏳ Comparing tables... This may take a few moments.</div>';
+            
+            const payload = {
+                source_a: {
+                    db_type: document.getElementById('dbtype_a').value,
+                    host: document.getElementById('host_a').value,
+                    user: document.getElementById('user_a').value,
+                    password: document.getElementById('password_a').value,
+                    database: document.getElementById('database_a').value,
+                    schema: document.getElementById('schema_a').value || null,
+                    table: document.getElementById('table_a').value,
+                    port: parseInt(document.getElementById('port_a').value) || null,
+                    limit: parseInt(document.getElementById('limit_a').value) || null,
+                    where_clause: document.getElementById('where_a').value || null
+                },
+                source_b: {
+                    db_type: document.getElementById('dbtype_b').value,
+                    host: document.getElementById('host_b').value,
+                    user: document.getElementById('user_b').value,
+                    password: document.getElementById('password_b').value,
+                    database: document.getElementById('database_b').value,
+                    schema: document.getElementById('schema_b').value || null,
+                    table: document.getElementById('table_b').value,
+                    port: parseInt(document.getElementById('port_b').value) || null,
+                    limit: parseInt(document.getElementById('limit_b').value) || null,
+                    where_clause: document.getElementById('where_b').value || null
+                }
+            };
+            
+            if (payload.source_a.db_type === 'snowflake') {
+                payload.source_a.account = document.getElementById('account_a').value;
+                payload.source_a.warehouse = document.getElementById('warehouse_a').value;
+                payload.source_a.role = document.getElementById('role_a').value;
+            }
+            
+            if (payload.source_b.db_type === 'snowflake') {
+                payload.source_b.account = document.getElementById('account_b').value;
+                payload.source_b.warehouse = document.getElementById('warehouse_b').value;
+                payload.source_b.role = document.getElementById('role_b').value;
+            }
+            
+            try {
+                const response = await fetch('/compare-database', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    // Redirect to results page
+                    window.location.href = '/results';
+                } else {
+                    resultDiv.innerHTML = `<div class="status error">❌ ${result.error}<br><br>${result.details}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
